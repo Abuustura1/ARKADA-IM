@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sevgi Animasyonu</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="stage" id="stage" role="main">
+    <!-- ÜSTTE GÖRÜNEN BAŞLIK KASTEN EKLENMEDİ (senin isteğin) -->
+
+    <div class="play-area" id="playArea" aria-hidden="false">
+      <!-- Tavşan -->
+      <div id="rabbit" class="rabbit" aria-hidden="true">
+        <svg viewBox="0 0 120 120" class="rabbit-svg" aria-hidden="true">
+          <ellipse cx="33" cy="20" rx="9" ry="22" class="ear left"></ellipse>
+          <ellipse cx="57" cy="20" rx="9" ry="22" class="ear right"></ellipse>
+          <circle cx="45" cy="48" r="20" class="head"></circle>
+          <circle cx="38" cy="46" r="2.6" class="eye"></circle>
+          <circle cx="52" cy="46" r="2.6" class="eye"></circle>
+          <path d="M45 52 q3 4 6 0" stroke-linecap="round" class="nose"></path>
+          <ellipse cx="45" cy="80" rx="24" ry="22" class="body"></ellipse>
+          <ellipse cx="32" cy="86" rx="5" ry="8" class="paw"></ellipse>
+          <ellipse cx="58" cy="86" rx="5" ry="8" class="paw"></ellipse>
+        </svg>
+      </div>
+
+      <!-- Kutu -->
+      <div id="box" class="box" aria-hidden="true">
+        <div class="box-top"></div>
+        <div class="box-front"></div>
+      </div>
+
+      <!-- FX Canvas -->
+      <canvas id="fxCanvas" class="fx-canvas" aria-hidden="true"></canvas>
+
+      <!-- Final harflerin çıkacağı overlay -->
+      <div id="finalOverlay" class="final-overlay" aria-live="polite" aria-atomic="true"></div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn" class="btn">Başla</button>
+      <button id="resetBtn" class="btn subtle" aria-hidden="true">Tekrar</button>
+    </div>
+
+    <!-- Ses: eğer dış kaynak koyarsan burada src atayabilirsin; yoksa JS webaudio ile sentez çalacak -->
+    <audio id="explosionAudio" preload="auto"></audio>
+    <audio id="bgAudio" preload="auto" loop></audio>
+
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
