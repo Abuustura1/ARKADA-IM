@@ -1,5 +1,5 @@
 /* script.js — patlama animasyonu yavaşlatıldı ve final yazısı patlama bittikten sonra gösteriliyor.
-   Diğer efektler, ses ayarları ve harf animasyonları önceki hâlindeki gibi korunmuştur.
+   Bu sürümde eklenti korunmuştur; ayrıca final yazısının mobil/pc uyumunu sağlayan dinamik ölçekleme/konum düzeltmesi eklendi.
 */
 
 const startBtn = document.getElementById('startBtn');
@@ -115,12 +115,10 @@ function createExplosion(cx, cy){
     for(let i=0;i<EXPLOSION_PARTICLES;i++){
       const angle = Math.random()*Math.PI*2;
       // hız azaltıldı (daha yavaş yayılma)
-      const speed = 1 + Math.random()*6; // önce 3..13 civarıydı, şimdi 1..7
+      const speed = 1 + Math.random()*6;
       const vx = Math.cos(angle)*speed;
       const vy = Math.sin(angle)*speed;
-      // parçacık boyutu biraz arttırılaiblir
       const size = 3 + Math.random()*10;
-      // yaşam uzatıldı
       const life = 1000 + Math.random()*1400; // 1s..2.4s
       const hue = Math.floor(10 + Math.random()*320);
       const shape = Math.random() < 0.25 ? 'rect' : 'circle';
@@ -132,15 +130,12 @@ function createExplosion(cx, cy){
 
     function tick(now){
       const dt = now - last; last = now;
-      // geniş bir temizleme (kısa süreli izleri azaltacak), canvas'ı tamamen temizleyip yeniden çiziyoruz
       ctx.clearRect(0,0,w,h);
 
       for(const p of particles){
         p.age += dt;
         if(p.age > p.life) { p.dead = true; continue; }
-        // yer çekimini hafif tuttuk; yavaş düşme
         p.vy += 0.02 * (dt/16);
-        // hareket biraz daha yumuşak
         p.x += p.vx * (dt/16);
         p.y += p.vy * (dt/16);
         const alpha = Math.max(0, 1 - p.age / p.life);
@@ -176,11 +171,10 @@ function createExplosion(cx, cy){
 
       if(active) requestAnimationFrame(tick);
       else {
-        // patlama bittikten sonra biraz daha canvas'ta bırakıp temizle ve resolve et
         setTimeout(()=> {
           ctx.clearRect(0,0,w,h);
           resolve();
-        }, 260); // 260ms ekstra bırakma, kullanıcı patlamayı rahatça görsün
+        }, 260);
       }
     }
     requestAnimationFrame(tick);
@@ -279,11 +273,76 @@ function isEmoji(ch){
   return !(/[A-Za-z0-9ÇĞİÖŞÜçğıöşü\s\.,!?\-]/.test(ch));
 }
 
+/* ---------- RESPONSIVE ADJUST HELPERS ---------- */
+
+/* base translateY by viewport (matches CSS breakpoints) */
+function getBaseTranslateY() {
+  const w = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+  if (w >= 1200) return -48;
+  if (w >= 641) return -36;
+  if (w >= 401) return -56;
+  return -64;
+}
+
+/* Apply adaptive scaling & upward shift so text doesn't overlap the box */
+function adjustFinalContainer(container) {
+  if(!container) return;
+  // reset transforms
+  container.style.transform = `translateY(${getBaseTranslateY()}px) scale(1)`;
+  container.style.transition = 'transform 240ms cubic-bezier(.2,.9,.3,1)';
+
+  // measure after paint
+  requestAnimationFrame(() => {
+    const stage = document.getElementById('playArea');
+    const stageRect = stage.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+
+    // allowed bottom: a few px above the top of the box
+    const allowedBottom = (boxRect.top - stageRect.top) - 8; // px from top of stage
+    const containerTop = contRect.top - stageRect.top;
+    const containerBottom = contRect.bottom - stageRect.top;
+    const containerHeight = contRect.height;
+    const containerWidth = contRect.width;
+    const stageWidth = stageRect.width;
+
+    // 1) If width too large, compute scale to fit within stage width minus padding
+    const maxAllowedWidth = Math.max(stageWidth - 32, 80); // keep some padding
+    let scale = 1;
+    if (containerWidth > maxAllowedWidth) {
+      scale = (maxAllowedWidth / containerWidth) * 0.97; // slight margin
+    }
+
+    // 2) After scaling, check vertical overlap with box
+    const scaledContainerBottom = containerTop + containerHeight * scale;
+    let extraUp = 0;
+    if (scaledContainerBottom > allowedBottom) {
+      // compute how much to move up
+      extraUp = Math.min( (scaledContainerBottom - allowedBottom) + 6, stageRect.height * 0.6 );
+      // if moving up is insufficient (very tall), additionally reduce scale
+      const availableHeight = Math.max(allowedBottom - containerTop - 6, 20);
+      if (containerHeight * scale > availableHeight) {
+        const heightScale = (availableHeight / containerHeight) * 0.95;
+        scale = Math.min(scale, heightScale);
+      }
+    }
+
+    // Apply final transform: translateY(base - extraUp) scale(scale)
+    const finalTranslateY = getBaseTranslateY() - extraUp;
+    container.style.transform = `translateY(${finalTranslateY}px) scale(${scale})`;
+  });
+}
+
+/* ---------- FINAL TEXT RENDER ---------- */
 function showFinalText(text = LETTER_TEXT){
   finalOverlay.innerHTML = '';
   const container = document.createElement('div');
   container.className = 'final-container';
   finalOverlay.appendChild(container);
+
+  // ensure container is single-line initially
+  container.style.whiteSpace = 'nowrap';
+  container.style.transform = `translateY(${getBaseTranslateY()}px) scale(1)`;
 
   const chars = Array.from(text);
   chars.forEach((ch, i) => {
@@ -298,6 +357,7 @@ function showFinalText(text = LETTER_TEXT){
       setTimeout(()=> span.classList.add('spark'), 80);
       setTimeout(()=> span.classList.add('float'), 420);
 
+      // letter burst at letter center
       const spanRect = span.getBoundingClientRect();
       const stageRect = document.getElementById('playArea').getBoundingClientRect();
       const cx = (spanRect.left - stageRect.left) + spanRect.width / 2;
@@ -305,8 +365,16 @@ function showFinalText(text = LETTER_TEXT){
       createLetterBurst(cx, cy);
     }, i * LETTER_DELAY);
   });
+
+  // After all letters drawn, adjust layout to avoid overlaps
+  const totalDelay = Math.max( (chars.length * LETTER_DELAY) + 140, 220);
+  setTimeout(()=> {
+    // Try to keep it one line; if still too wide/tall, adjust
+    adjustFinalContainer(container);
+  }, totalDelay);
 }
 
+/* Clear final text & reset any transforms */
 function clearFinalText(){
   finalOverlay.innerHTML = '';
 }
@@ -334,10 +402,9 @@ async function startSequence(){
   const cy = (boxRect.top - stageRect.top) + boxRect.height/2;
 
   playExplosionSound();
-  // Yeni: createExplosion döndürdüğü Promise bitene kadar bekle
   await createExplosion(cx, cy);
 
-  // patlama bittikten sonra harfleri başlat (küçük gecikme bırakıldı)
+  // patlama bittikten sonra harfleri başlat
   setTimeout(()=> {
     showFinalText();
   }, 120);
@@ -359,6 +426,7 @@ function resetSequence(){
   ctx.clearRect(0,0,fxCanvas.width, fxCanvas.height);
   clearFinalText();
 
+  // reset overlay and start button states
   startBtn.disabled = false;
   startBtn.style.opacity = 1;
   resetBtn.style.opacity = 0.6;
@@ -380,7 +448,7 @@ resizeCanvas();
 startBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startBtn.click(); }}); 
 resetBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resetBtn.click(); }});
 
-/* ----------------- EKLENTİ KODU (Sadece burası eklenti, orijinal kod değişmedi) ----------------- */
+/* ----------------- EKLENTİ KODU (Sadece burası eklenti mantığı) ----------------- */
 
 /*
   Amaç:
@@ -407,7 +475,8 @@ function pluginShowOverlay(prefill = "") {
   }
   if(usernameInput) {
     usernameInput.value = prefill || "";
-    usernameInput.focus();
+    // mobilde klavyeyi tetiklemek için küçük gecikme ile focus
+    setTimeout(()=> usernameInput.focus(), 60);
   }
   // Başla butonunu kapat
   if(startBtn) {
@@ -461,7 +530,7 @@ if(typeof showFinalText === 'function') {
     if(!text || text === LETTER_TEXT) {
       if(__pluginUsername && __pluginUsername.trim() !== "") {
         // İstenen format: "Canım Arkadaşım [Ad] 😊 🥰" (emojiler arasında boşluk)
-        text = `Canım Arkadaşım ${__pluginUsername} ❤🤞`;
+        text = `Canım Arkadaşım ${__pluginUsername} 😊 🥰`;
       } else {
         text = LETTER_TEXT;
       }
@@ -470,9 +539,8 @@ if(typeof showFinalText === 'function') {
   };
 }
 
-// resetSequence zaten orijinalde resetliyor; eklenti olarak 'Tekrar' tuşuna overlay açılmasını ekliyoruz
+// resetSequence'e overlay açılmasını ekliyoruz
 if(resetBtn) {
-  // ek listener: önce orijinal resetSequence çalışsın (zaten bağlı), sonra overlay göster
   resetBtn.addEventListener('click', () => {
     // küçük gecikme ile overlay açıyoruz ki resetSequence'in yaptığı temizlemeler bitsin
     setTimeout(() => {
@@ -483,6 +551,5 @@ if(resetBtn) {
 
 // İlk yüklemede overlay göster
 window.addEventListener('load', () => {
-  // küçük gecikme ile aç (aynı anda diğer init'lerle çakışmaması için)
   setTimeout(()=> pluginShowOverlay(""), 30);
 });
