@@ -377,5 +377,112 @@ window.addEventListener('keydown', (e) => {
   if(e.key.toLowerCase() === 'x' && !startBtn.disabled) startBtn.click();
 });
 resizeCanvas();
-startBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startBtn.click(); }});
+startBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startBtn.click(); }}); 
 resetBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resetBtn.click(); }});
+
+/* ----------------- EKLENTİ KODU (Sadece burası eklenti, orijinal kod değişmedi) ----------------- */
+
+/*
+  Amaç:
+  - Sayfa açılınca kullanıcı adı overlay'i göster.
+  - Kullanıcı adı girilene kadar Başla butonu devre dışı.
+  - Kullanıcı "Devam" dediğinde overlay kapanır, Başla aktif olur.
+  - Final mesajı kullanıcı adını içerir: "Canım Arkadaşım [Ad] 😊 🥰"
+  - Tekrar butonuna basınca overlay tekrar gösterilir (önceki adı input içine taşı).
+*/
+
+// Küresel kullanıcı adı tutucu
+let __pluginUsername = "";
+
+// Overlay elemanları (HTML içinde ekli)
+const usernameOverlay = document.getElementById('usernameOverlay');
+const usernameInput = document.getElementById('usernameInput');
+const usernameContinue = document.getElementById('usernameContinue');
+
+// Başlangıç: overlay göster, başla butonu devre dışı
+function pluginShowOverlay(prefill = "") {
+  if(usernameOverlay) {
+    usernameOverlay.setAttribute('aria-hidden', 'false');
+    usernameOverlay.style.display = 'flex';
+  }
+  if(usernameInput) {
+    usernameInput.value = prefill || "";
+    usernameInput.focus();
+  }
+  // Başla butonunu kapat
+  if(startBtn) {
+    startBtn.disabled = true;
+    startBtn.style.opacity = 0.6;
+  }
+  // temiz final yazısını gizle
+  if(finalOverlay) finalOverlay.innerHTML = '';
+}
+
+// Overlay kapat
+function pluginHideOverlay() {
+  if(usernameOverlay) {
+    usernameOverlay.setAttribute('aria-hidden', 'true');
+    usernameOverlay.style.display = 'none';
+  }
+  if(startBtn) {
+    startBtn.disabled = false;
+    startBtn.style.opacity = 1;
+  }
+  if(usernameInput) usernameInput.blur();
+}
+
+// Continue butonu işlemi
+if(usernameContinue) {
+  usernameContinue.addEventListener('click', () => {
+    const val = (usernameInput && usernameInput.value) ? usernameInput.value.trim() : "";
+    if(!val) {
+      // Basit uyarı (isteğe bağlı)
+      alert("Lütfen adınızı girin!");
+      usernameInput.focus();
+      return;
+    }
+    __pluginUsername = val;
+    pluginHideOverlay();
+  });
+  // Enter ile submit
+  usernameInput && usernameInput.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') {
+      e.preventDefault();
+      usernameContinue.click();
+    }
+  });
+}
+
+// Override / wrap showFinalText: orijinal fonksiyonu sakla ve yeni isimle çağır
+if(typeof showFinalText === 'function') {
+  const _origShowFinalText = showFinalText;
+  window.showFinalText = function(text) {
+    // Eğer text verilmemiş veya text orijinal sabitse, kullanıcı adını ekle
+    if(!text || text === LETTER_TEXT) {
+      if(__pluginUsername && __pluginUsername.trim() !== "") {
+        // İstenen format: "Canım Arkadaşım [Ad] 😊 🥰" (emojiler arasında boşluk)
+        text = `Canım Arkadaşım ${__pluginUsername} ❤🤞`;
+      } else {
+        text = LETTER_TEXT;
+      }
+    }
+    return _origShowFinalText(text);
+  };
+}
+
+// resetSequence zaten orijinalde resetliyor; eklenti olarak 'Tekrar' tuşuna overlay açılmasını ekliyoruz
+if(resetBtn) {
+  // ek listener: önce orijinal resetSequence çalışsın (zaten bağlı), sonra overlay göster
+  resetBtn.addEventListener('click', () => {
+    // küçük gecikme ile overlay açıyoruz ki resetSequence'in yaptığı temizlemeler bitsin
+    setTimeout(() => {
+      pluginShowOverlay(__pluginUsername);
+    }, 60);
+  });
+}
+
+// İlk yüklemede overlay göster
+window.addEventListener('load', () => {
+  // küçük gecikme ile aç (aynı anda diğer init'lerle çakışmaması için)
+  setTimeout(()=> pluginShowOverlay(""), 30);
+});

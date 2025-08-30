@@ -8,7 +8,16 @@
 </head>
 <body>
   <main class="stage" id="stage" role="main">
-    <!-- ÜSTTE GÖRÜNEN BAŞLIK KASTEN EKLENMEDİ (senin isteğin) -->
+    <!-- Kullanıcı adı overlay (EKLENTİ) -->
+    <div id="usernameOverlay" class="username-overlay" aria-hidden="false">
+      <div class="username-card" role="dialog" aria-modal="true" aria-label="Adınızı girin">
+        <h2>Adınızı girin</h2>
+        <input id="usernameInput" type="text" placeholder="Adınız..." aria-label="Adınız"/>
+        <div class="username-actions">
+          <button id="usernameContinue" class="btn">Devam</button>
+        </div>
+      </div>
+    </div>
 
     <div class="play-area" id="playArea" aria-hidden="false">
       <!-- Tavşan -->
