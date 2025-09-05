@@ -269,6 +269,7 @@ body{
 }
 
 /* ----------------- EKLENTİ: kullanıcı adı overlay stilleri ----------------- */
+/* ----------------- EKLENTİ: kullanıcı adı overlay stilleri (düzeltilmiş) ----------------- */
 .username-overlay{
   position: fixed;
   inset: 0;
@@ -289,8 +290,9 @@ body{
   box-shadow: 0 12px 40px rgba(2,6,23,0.8);
   text-align: center;
   color: var(--text);
-  /* Küçük yukarı taşıma: hem masaüstü hem mobil için uygun (hafif ve responsive) */
-  transform: translateY(-6vh);
+  position: relative;
+  z-index: 65;
+  background-clip: padding-box; /* çizgi olmasını engeller */
 }
 
 .username-card h2{
@@ -298,17 +300,25 @@ body{
   font-size: 20px;
 }
 
+/* input düzeltildi: alt çizgi yok, hafif yukarı kaydırıldı */
 #usernameInput{
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px; /* yukarı kaydırma */
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: none; /* alt çizgiyi tamamen kaldır */
   background: rgba(0,0,0,0.18);
   color: var(--text);
   margin-bottom: 12px;
   font-size: 16px;
+  outline: none; /* focus çizgisini engeller */
 }
 
+/* input focus efekti sadece glow */
+#usernameInput:focus{
+  box-shadow: 0 0 8px rgba(255,122,162,0.5);
+}
+
+/* Buttonlar */
 .username-actions{
   display:flex;
   justify-content:center;
@@ -319,6 +329,6 @@ body{
 
 /* küçük ekran uyumu */
 @media (max-width:520px){
-  .username-card{ padding: 14px; transform: translateY(-10vh); }
+  .username-card{ padding: 14px; }
   .username-card h2{ font-size:18px; }
 }
