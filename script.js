@@ -1,32 +1,39 @@
-/* script.js — patlama animasyonu yavaşlatıldı ve final yazısı patlama bittikten sonra gösteriliyor.
-   Bu sürümde eklenti korunmuştur; ayrıca final yazısının mobil/pc uyumunu sağlayan dinamik ölçekleme/konum düzeltmesi eklendi.
+/* script.js — TAMAMI (yeni, eklentili, floating-wrapper çözümü)
+   - play-area içi overflow: hidden nedeniyle oluşan kırpma sorununu çözmek için
+     final harfleri body'ye yerleştirilmiş absolute bir "floating wrapper" içinde gösterilir.
+   - responsive ölçekleme, dikey/yatay sığdırma, username eklentisi, ses ve patlama korundu.
 */
 
+/* ----------------------- DOM REFERANSLARI ----------------------- */
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
 const rabbit = document.getElementById('rabbit');
 const box = document.getElementById('box');
 const fxCanvas = document.getElementById('fxCanvas');
-const finalOverlay = document.getElementById('finalOverlay');
+const finalOverlay = document.getElementById('finalOverlay'); // still kept for compatibility
 const explosionAudio = document.getElementById('explosionAudio');
 const bgAudio = document.getElementById('bgAudio');
 
 const ctx = fxCanvas.getContext('2d');
+
+/* ----------------------- CANVAS / RESIZE ----------------------- */
 function resizeCanvas(){
-  fxCanvas.width = fxCanvas.clientWidth;
-  fxCanvas.height = fxCanvas.clientHeight;
+  // Ensure canvas drawing buffer matches displayed size
+  fxCanvas.width = Math.round(fxCanvas.clientWidth);
+  fxCanvas.height = Math.round(fxCanvas.clientHeight);
 }
 window.addEventListener('resize', resizeCanvas);
+window.addEventListener('load', resizeCanvas);
 resizeCanvas();
 
-/* AYARLAR */
+/* ----------------------- AYARLAR ----------------------- */
 const JUMP_DURATION = 850;
 const JUMP_HEIGHT = 180;
 const EXPLOSION_PARTICLES = 160;
-const LETTER_TEXT = 'Canım arkadaşım 💖✨';
+const DEFAULT_LETTER_TEXT = 'Canım arkadaşım 💖✨';
 const LETTER_DELAY = 90;
 
-/* Ses / AudioContext */
+/* ----------------------- AUDIO (WebAudio fallback synth) ----------------------- */
 let audioCtx = null;
 function getAudioCtx(){
   if(!audioCtx){
@@ -45,14 +52,14 @@ function unlockAudioContext(){
   } catch(e){}
 }
 explosionAudio.crossOrigin = "anonymous";
-explosionAudio.volume = 0.7; // biraz kısıldı
+explosionAudio.volume = 0.7;
 
-/* Easing */
+/* ----------------------- EASING ----------------------- */
 function easeInOutCubic(t){
   return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
 }
 
-/* Tavşan zıplatma */
+/* ----------------------- TAVŞAN ZIPLATMA ----------------------- */
 function animateRabbitJump(duration = JUMP_DURATION, height = JUMP_HEIGHT){
   return new Promise(resolve => {
     const startRect = rabbit.getBoundingClientRect();
@@ -104,25 +111,41 @@ function animateRabbitJump(duration = JUMP_DURATION, height = JUMP_HEIGHT){
   });
 }
 
-/* --- YAVAŞLATILMIŞ BÜYÜK PATLAMA (Promise döndürür) --- */
+/* ----------------------- UTILS: STAGE -> CANVAS COORDS ----------------------- */
+/* We pass stage-relative coordinates (pixels inside playArea). Canvas coordinates match
+   fxCanvas.width/fxCanvas.height (we set them equal to clientWidth/clientHeight), so they align.
+   This helper is kept for clarity and future scaling if needed.
+*/
+function stageToCanvasCoords(stageX, stageY) {
+  // fxCanvas size equals playArea client size (after resizeCanvas)
+  const stage = document.getElementById('playArea');
+  const stageRect = stage.getBoundingClientRect();
+  const scaleX = fxCanvas.width / stageRect.width;
+  const scaleY = fxCanvas.height / stageRect.height;
+  return { x: stageX * scaleX, y: stageY * scaleY };
+}
+
+/* ----------------------- PATLAMA (BÜYÜK) ----------------------- */
+/* cx,cy are stage-relative coordinates (px from playArea.left/top) */
 function createExplosion(cx, cy){
   return new Promise(resolve => {
     const particles = [];
     const w = fxCanvas.width;
     const h = fxCanvas.height;
 
-    // Daha uzun ömür ve daha yavaş hız: kullanıcının patlamayı görebilmesi için
+    // Convert center to canvas coords
+    const c = stageToCanvasCoords(cx, cy);
+
     for(let i=0;i<EXPLOSION_PARTICLES;i++){
       const angle = Math.random()*Math.PI*2;
-      // hız azaltıldı (daha yavaş yayılma)
-      const speed = 1 + Math.random()*6;
+      const speed = 1 + Math.random()*6; // yavaşlatılmış
       const vx = Math.cos(angle)*speed;
       const vy = Math.sin(angle)*speed;
       const size = 3 + Math.random()*10;
-      const life = 1000 + Math.random()*1400; // 1s..2.4s
+      const life = 1000 + Math.random()*1400; // ms
       const hue = Math.floor(10 + Math.random()*320);
       const shape = Math.random() < 0.25 ? 'rect' : 'circle';
-      particles.push({x:cx, y:cy, vx, vy, size, life, age:0, hue, shape});
+      particles.push({x:c.x, y:c.y, vx, vy, size, life, age:0, hue, shape});
     }
 
     let last = performance.now();
@@ -158,8 +181,8 @@ function createExplosion(cx, cy){
 
       // küçük parıltılar
       if(Math.random() < 0.03){
-        const px = cx + (Math.random()-0.5)*120;
-        const py = cy + (Math.random()-0.5)*60;
+        const px = c.x + (Math.random()-0.5)*120;
+        const py = c.y + (Math.random()-0.5)*60;
         ctx.beginPath();
         ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.75})`;
         ctx.arc(px, py, 1 + Math.random()*3, 0, Math.PI*2);
@@ -181,16 +204,19 @@ function createExplosion(cx, cy){
   });
 }
 
-/* Harf başına küçük burst */
+/* ----------------------- HARF BURST (KÜÇÜKLER) ----------------------- */
+/* x,y stage-relative coordinates */
 function createLetterBurst(x, y){
   const particles = [];
   const count = 18;
   const w = fxCanvas.width, h = fxCanvas.height;
+  const c = stageToCanvasCoords(x, y);
   for(let i=0;i<count;i++){
     const angle = Math.random()*Math.PI*2;
     const speed = 1 + Math.random()*4;
     particles.push({
-      x, y,
+      x: c.x,
+      y: c.y,
       vx: Math.cos(angle)*speed,
       vy: Math.sin(angle)*speed - Math.random()*1.2,
       size: 2 + Math.random()*4,
@@ -222,7 +248,7 @@ function createLetterBurst(x, y){
   requestAnimationFrame(tick);
 }
 
-/* Patlama sesi (dosya yoksa WebAudio synth ile çal) */
+/* ----------------------- PATLAMA SESI ----------------------- */
 function playExplosionSound(){
   unlockAudioContext();
 
@@ -267,15 +293,14 @@ function playExplosionSound(){
   src.stop(now + 0.6);
 }
 
-/* Harf harf gösterim */
+/* ----------------------- EMOJI / HARF TESPITI ----------------------- */
 function isEmoji(ch){
   if(!ch || ch.trim()==='') return false;
+  // basit heuristic: alfanumerik veya noktalama değilse emoji kabul et
   return !(/[A-Za-z0-9ÇĞİÖŞÜçğıöşü\s\.,!?\-]/.test(ch));
 }
 
-/* ---------- RESPONSIVE ADJUST HELPERS ---------- */
-
-/* base translateY by viewport (matches CSS breakpoints) */
+/* ----------------------- RESPONSIVE HELPERS ----------------------- */
 function getBaseTranslateY() {
   const w = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
   if (w >= 1200) return -48;
@@ -284,65 +309,112 @@ function getBaseTranslateY() {
   return -64;
 }
 
-/* Apply adaptive scaling & upward shift so text doesn't overlap the box */
-function adjustFinalContainer(container) {
-  if(!container) return;
-  // reset transforms
-  container.style.transform = `translateY(${getBaseTranslateY()}px) scale(1)`;
-  container.style.transition = 'transform 240ms cubic-bezier(.2,.9,.3,1)';
+/* ----------------------- FLOATING WRAPPER (FINAL TEXT) ----------------------- */
+let __finalFloatingWrapper = null;
+let __finalFloatingResizeHandler = null;
 
-  // measure after paint
-  requestAnimationFrame(() => {
-    const stage = document.getElementById('playArea');
-    const stageRect = stage.getBoundingClientRect();
-    const boxRect = box.getBoundingClientRect();
-    const contRect = container.getBoundingClientRect();
-
-    // allowed bottom: a few px above the top of the box
-    const allowedBottom = (boxRect.top - stageRect.top) - 8; // px from top of stage
-    const containerTop = contRect.top - stageRect.top;
-    const containerBottom = contRect.bottom - stageRect.top;
-    const containerHeight = contRect.height;
-    const containerWidth = contRect.width;
-    const stageWidth = stageRect.width;
-
-    // 1) If width too large, compute scale to fit within stage width minus padding
-    const maxAllowedWidth = Math.max(stageWidth - 32, 80); // keep some padding
-    let scale = 1;
-    if (containerWidth > maxAllowedWidth) {
-      scale = (maxAllowedWidth / containerWidth) * 0.97; // slight margin
-    }
-
-    // 2) After scaling, check vertical overlap with box
-    const scaledContainerBottom = containerTop + containerHeight * scale;
-    let extraUp = 0;
-    if (scaledContainerBottom > allowedBottom) {
-      // compute how much to move up
-      extraUp = Math.min( (scaledContainerBottom - allowedBottom) + 6, stageRect.height * 0.6 );
-      // if moving up is insufficient (very tall), additionally reduce scale
-      const availableHeight = Math.max(allowedBottom - containerTop - 6, 20);
-      if (containerHeight * scale > availableHeight) {
-        const heightScale = (availableHeight / containerHeight) * 0.95;
-        scale = Math.min(scale, heightScale);
-      }
-    }
-
-    // Apply final transform: translateY(base - extraUp) scale(scale)
-    const finalTranslateY = getBaseTranslateY() - extraUp;
-    container.style.transform = `translateY(${finalTranslateY}px) scale(${scale})`;
-  });
+/* remove wrapper and listeners */
+function removeFloatingWrapper() {
+  if (__finalFloatingWrapper) {
+    __finalFloatingWrapper.remove();
+    __finalFloatingWrapper = null;
+  }
+  if (__finalFloatingResizeHandler) {
+    window.removeEventListener('resize', __finalFloatingResizeHandler);
+    window.removeEventListener('scroll', __finalFloatingResizeHandler);
+    __finalFloatingResizeHandler = null;
+  }
 }
 
-/* ---------- FINAL TEXT RENDER ---------- */
-function showFinalText(text = LETTER_TEXT){
-  finalOverlay.innerHTML = '';
+/* adjust container inside wrapper: ensures it fits horizontally and vertically above the box */
+function adjustFinalContainer(container) {
+  if (!container || !__finalFloatingWrapper) return;
+
+  const stage = document.getElementById('playArea');
+  const stageRect = stage.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+
+  const contRect = container.getBoundingClientRect();
+  const wrapperRect = __finalFloatingWrapper.getBoundingClientRect();
+  const wrapperWidth = wrapperRect.width;
+  const wrapperHeight = wrapperRect.height;
+
+  const paddingX = 24;
+  const maxAllowedWidth = Math.max(wrapperWidth - paddingX * 2, 40);
+
+  const marginAboveBox = 10;
+  const allowedBottom = (boxRect.top - stageRect.top) - marginAboveBox;
+
+  // compute scales
+  const scaleX = maxAllowedWidth / contRect.width;
+  const availableHeight = Math.max(allowedBottom - 8, 24);
+  const scaleY = availableHeight / contRect.height;
+
+  let scale = Math.min(scaleX, scaleY, 1);
+  const MIN_SCALE = 0.58;
+  scale = Math.max(scale, MIN_SCALE);
+
+  const scaledHeight = contRect.height * scale;
+  const centeredTop = (wrapperHeight / 2) - (scaledHeight / 2);
+  const scaledBottomIfCentered = centeredTop + scaledHeight;
+
+  let finalTop = centeredTop;
+  if (scaledBottomIfCentered > allowedBottom) {
+    finalTop = Math.max(6, allowedBottom - scaledHeight - 4);
+  }
+
+  const translateFromCenter = finalTop - ((wrapperHeight / 2) - (contRect.height / 2));
+
+  container.style.transition = 'transform 260ms cubic-bezier(.2,.9,.3,1)';
+  container.style.transformOrigin = 'center center';
+  container.style.transform = `translateY(${translateFromCenter}px) scale(${scale})`;
+}
+
+/* showFinalText: main function (uses plugin username if set) */
+let __pluginUsername = ""; // plugin username store
+
+function showFinalText(text) {
+  // decide final text
+  if(!text || text === DEFAULT_LETTER_TEXT) {
+    if(__pluginUsername && __pluginUsername.trim() !== "") {
+      text = `Canım Arkadaşım ${__pluginUsername} 😊 🥰`;
+    } else {
+      text = DEFAULT_LETTER_TEXT;
+    }
+  }
+
+  // cleanup old
+  removeFloatingWrapper();
+  if(finalOverlay) finalOverlay.innerHTML = '';
+
+  const stage = document.getElementById('playArea');
+  const stageRect = stage.getBoundingClientRect();
+
+  // create wrapper positioned over playArea
+  __finalFloatingWrapper = document.createElement('div');
+  __finalFloatingWrapper.className = 'final-floating-wrapper';
+  Object.assign(__finalFloatingWrapper.style, {
+    position: 'absolute',
+    left: `${Math.round(stageRect.left + window.scrollX)}px`,
+    top: `${Math.round(stageRect.top + window.scrollY)}px`,
+    width: `${Math.round(stageRect.width)}px`,
+    height: `${Math.round(stageRect.height)}px`,
+    pointerEvents: 'none',
+    zIndex: 9999,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible'
+  });
+  document.body.appendChild(__finalFloatingWrapper);
+
+  // inner container
   const container = document.createElement('div');
   container.className = 'final-container';
-  finalOverlay.appendChild(container);
-
-  // ensure container is single-line initially
   container.style.whiteSpace = 'nowrap';
+  container.style.willChange = 'transform';
   container.style.transform = `translateY(${getBaseTranslateY()}px) scale(1)`;
+  __finalFloatingWrapper.appendChild(container);
 
   const chars = Array.from(text);
   chars.forEach((ch, i) => {
@@ -357,29 +429,45 @@ function showFinalText(text = LETTER_TEXT){
       setTimeout(()=> span.classList.add('spark'), 80);
       setTimeout(()=> span.classList.add('float'), 420);
 
-      // letter burst at letter center
+      // letter burst: compute center relative to wrapper
       const spanRect = span.getBoundingClientRect();
-      const stageRect = document.getElementById('playArea').getBoundingClientRect();
-      const cx = (spanRect.left - stageRect.left) + spanRect.width / 2;
-      const cy = (spanRect.top - stageRect.top) + spanRect.height / 2;
+      const wrapperRect = __finalFloatingWrapper.getBoundingClientRect();
+      const cx = (spanRect.left - wrapperRect.left) + spanRect.width / 2;
+      const cy = (spanRect.top - wrapperRect.top) + spanRect.height / 2;
       createLetterBurst(cx, cy);
     }, i * LETTER_DELAY);
   });
 
-  // After all letters drawn, adjust layout to avoid overlaps
-  const totalDelay = Math.max( (chars.length * LETTER_DELAY) + 140, 220);
-  setTimeout(()=> {
-    // Try to keep it one line; if still too wide/tall, adjust
-    adjustFinalContainer(container);
-  }, totalDelay);
+  // After letters drawn, adjust container to avoid box overlap
+  const totalDelay = Math.max((chars.length * LETTER_DELAY) + 180, 260);
+  setTimeout(() => adjustFinalContainer(container), totalDelay);
+
+  // reposition wrapper on resize/scroll and readjust
+  __finalFloatingResizeHandler = () => {
+    if (!__finalFloatingWrapper) return;
+    const stageRect2 = stage.getBoundingClientRect();
+    Object.assign(__finalFloatingWrapper.style, {
+      left: `${Math.round(stageRect2.left + window.scrollX)}px`,
+      top: `${Math.round(stageRect2.top + window.scrollY)}px`,
+      width: `${Math.round(stageRect2.width)}px`,
+      height: `${Math.round(stageRect2.height)}px`,
+    });
+    requestAnimationFrame(() => {
+      const inner = __finalFloatingWrapper.querySelector('.final-container');
+      if (inner) adjustFinalContainer(inner);
+    });
+  };
+  window.addEventListener('resize', __finalFloatingResizeHandler);
+  window.addEventListener('scroll', __finalFloatingResizeHandler, { passive: true });
 }
 
-/* Clear final text & reset any transforms */
+/* clearFinalText: remove wrapper */
 function clearFinalText(){
-  finalOverlay.innerHTML = '';
+  removeFloatingWrapper();
+  if(finalOverlay) finalOverlay.innerHTML = '';
 }
 
-/* Başlatma: patlama tamamlanana kadar bekle, sonra final metni göster */
+/* ----------------------- START/RESET SEQUENCE ----------------------- */
 async function startSequence(){
   if(startBtn.disabled) return;
   startBtn.disabled = true;
@@ -406,7 +494,7 @@ async function startSequence(){
 
   // patlama bittikten sonra harfleri başlat
   setTimeout(()=> {
-    showFinalText();
+    showFinalText(); // plugin username otomatik eklenir
   }, 120);
 
   box.animate([
@@ -416,7 +504,6 @@ async function startSequence(){
   ], { duration: 700, easing: 'cubic-bezier(.2,.9,.3,1)'});
 }
 
-/* Reset */
 function resetSequence(){
   rabbit.style.opacity = '1';
   rabbit.style.transform = '';
@@ -435,39 +522,35 @@ function resetSequence(){
   if(bgAudio && !bgAudio.paused){ bgAudio.pause(); bgAudio.currentTime = 0; }
 }
 
-/* Eventler */
+/* ----------------------- EVENTLER ----------------------- */
 startBtn.addEventListener('click', () => {
   unlockAudioContext();
   startSequence();
 });
-resetBtn.addEventListener('click', () => resetSequence());
+resetBtn.addEventListener('click', () => {
+  resetSequence();
+  // küçük gecikme ile overlay aç (pluginShowOverlay fonksiyonu aşağıda)
+  setTimeout(()=> pluginShowOverlay(__pluginUsername), 60);
+});
 window.addEventListener('keydown', (e) => {
   if(e.key.toLowerCase() === 'x' && !startBtn.disabled) startBtn.click();
 });
-resizeCanvas();
 startBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startBtn.click(); }}); 
 resetBtn.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resetBtn.click(); }});
 
-/* ----------------- EKLENTİ KODU (Sadece burası eklenti mantığı) ----------------- */
-
+/* ----------------------- EKLENTİ: KULLANICI ADI OVERLAY ----------------------- */
 /*
   Amaç:
-  - Sayfa açılınca kullanıcı adı overlay'i göster.
-  - Kullanıcı adı girilene kadar Başla butonu devre dışı.
-  - Kullanıcı "Devam" dediğinde overlay kapanır, Başla aktif olur.
-  - Final mesajı kullanıcı adını içerir: "Canım Arkadaşım [Ad] 😊 🥰"
-  - Tekrar butonuna basınca overlay tekrar gösterilir (önceki adı input içine taşı).
+  - Sayfa açıldığında kullanıcı adı overlay göster.
+  - Kullanıcı adını girene kadar Başla devre dışı.
+  - Devam ile overlay kapanır; showFinalText kullanıcı adını kullanır.
+  - Tekrar butonuna basınca overlay tekrar gösterilir (önceki adı prefill).
 */
 
-// Küresel kullanıcı adı tutucu
-let __pluginUsername = "";
-
-// Overlay elemanları (HTML içinde ekli)
 const usernameOverlay = document.getElementById('usernameOverlay');
 const usernameInput = document.getElementById('usernameInput');
 const usernameContinue = document.getElementById('usernameContinue');
 
-// Başlangıç: overlay göster, başla butonu devre dışı
 function pluginShowOverlay(prefill = "") {
   if(usernameOverlay) {
     usernameOverlay.setAttribute('aria-hidden', 'false');
@@ -475,19 +558,15 @@ function pluginShowOverlay(prefill = "") {
   }
   if(usernameInput) {
     usernameInput.value = prefill || "";
-    // mobilde klavyeyi tetiklemek için küçük gecikme ile focus
     setTimeout(()=> usernameInput.focus(), 60);
   }
-  // Başla butonunu kapat
   if(startBtn) {
     startBtn.disabled = true;
     startBtn.style.opacity = 0.6;
   }
-  // temiz final yazısını gizle
-  if(finalOverlay) finalOverlay.innerHTML = '';
+  clearFinalText();
 }
 
-// Overlay kapat
 function pluginHideOverlay() {
   if(usernameOverlay) {
     usernameOverlay.setAttribute('aria-hidden', 'true');
@@ -500,12 +579,10 @@ function pluginHideOverlay() {
   if(usernameInput) usernameInput.blur();
 }
 
-// Continue butonu işlemi
 if(usernameContinue) {
   usernameContinue.addEventListener('click', () => {
     const val = (usernameInput && usernameInput.value) ? usernameInput.value.trim() : "";
     if(!val) {
-      // Basit uyarı (isteğe bağlı)
       alert("Lütfen adınızı girin!");
       usernameInput.focus();
       return;
@@ -513,7 +590,6 @@ if(usernameContinue) {
     __pluginUsername = val;
     pluginHideOverlay();
   });
-  // Enter ile submit
   usernameInput && usernameInput.addEventListener('keydown', (e) => {
     if(e.key === 'Enter') {
       e.preventDefault();
@@ -522,34 +598,9 @@ if(usernameContinue) {
   });
 }
 
-// Override / wrap showFinalText: orijinal fonksiyonu sakla ve yeni isimle çağır
-if(typeof showFinalText === 'function') {
-  const _origShowFinalText = showFinalText;
-  window.showFinalText = function(text) {
-    // Eğer text verilmemiş veya text orijinal sabitse, kullanıcı adını ekle
-    if(!text || text === LETTER_TEXT) {
-      if(__pluginUsername && __pluginUsername.trim() !== "") {
-        // İstenen format: "Canım Arkadaşım [Ad] 😊 🥰" (emojiler arasında boşluk)
-        text = `Canım Arkadaşım ${__pluginUsername} 😊 🥰`;
-      } else {
-        text = LETTER_TEXT;
-      }
-    }
-    return _origShowFinalText(text);
-  };
-}
-
-// resetSequence'e overlay açılmasını ekliyoruz
-if(resetBtn) {
-  resetBtn.addEventListener('click', () => {
-    // küçük gecikme ile overlay açıyoruz ki resetSequence'in yaptığı temizlemeler bitsin
-    setTimeout(() => {
-      pluginShowOverlay(__pluginUsername);
-    }, 60);
-  });
-}
-
-// İlk yüklemede overlay göster
+// initial show on load
 window.addEventListener('load', () => {
   setTimeout(()=> pluginShowOverlay(""), 30);
 });
+
+/* ----------------------- SON ----------------------- */
