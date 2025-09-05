@@ -248,8 +248,8 @@ body{
   .final-container{
     transform: translateY(-56px); /* daha yukarı */
   }
-  .letter{font-size: clamp(22px, 7.5vw, 34px);}
-  .letter.emoji{font-size: clamp(28px, 10.5vw, 46px);}
+  .letter{font-size: clamp(22px, 7.5vw, 34px);} 
+  .letter.emoji{font-size: clamp(28px, 10.5vw, 46px);} 
   /* mobilde pseudo-element hafif */ 
   .letter.show::after{
     width:10px;
@@ -264,7 +264,7 @@ body{
 @media (max-width:400px){
   .final-container{ transform: translateY(-64px); }
   .letter{ font-size: clamp(18px, 8.2vw, 30px); }
-  .letter.emoji{ font-size: clamp(24px, 11vw, 40px); }
+  .letter.emoji{font-size: clamp(24px, 11vw, 40px); }
   .letter.show::after{ width:9px; height:9px; filter: blur(2.5px); transform:translateY(-3px) scale(1); }
 }
 
@@ -289,6 +289,8 @@ body{
   box-shadow: 0 12px 40px rgba(2,6,23,0.8);
   text-align: center;
   color: var(--text);
+  /* Küçük yukarı taşıma: hem masaüstü hem mobil için uygun (hafif ve responsive) */
+  transform: translateY(-6vh);
 }
 
 .username-card h2{
@@ -317,6 +319,6 @@ body{
 
 /* küçük ekran uyumu */
 @media (max-width:520px){
-  .username-card{ padding: 14px; }
+  .username-card{ padding: 14px; transform: translateY(-10vh); }
   .username-card h2{ font-size:18px; }
 }
