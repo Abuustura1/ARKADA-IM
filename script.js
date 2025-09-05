@@ -1,4 +1,8 @@
-/* script.js — TAMAMI (GÜNCELLENDİ: mobil uyumluluk + floating-wrapper fixed + wrap fallback) */
+/* script.js — TAMAMI (emoji-yan-yan + sola-kaydırma eklendi)
+   - Tüm önceki eklentiler korunmuştur.
+   - Emoji tokenleri ardışık ise tek satırda yan yana gösterilir.
+   - Container tümüne küçük bir sola kaydırma (responsive) uygulanır.
+*/
 
 /* ----------------------- DOM REFERANSLARI ----------------------- */
 const startBtn = document.getElementById('startBtn');
@@ -278,7 +282,7 @@ function playExplosionSound(){
   src.stop(now + 0.6);
 }
 
-/* ----------------------- EMOJI CHECK ----------------------- */
+/* ----------------------- EMOJI / HARF TESPITI ----------------------- */
 function isEmoji(ch){
   if(!ch || ch.trim()==='') return false;
   return !(/[A-Za-z0-9ÇĞİÖŞÜçğıöşü\s\.,!?\-]/.test(ch));
@@ -293,12 +297,21 @@ function getBaseTranslateY() {
   return -64;
 }
 
-/* ----------------------- FLOATING WRAPPER (MOBIL FIX) ----------------------- */
+/* get X offset (small left shift), responsive */
+function getFinalOffsetX(wrapperWidth){
+  // negative value shifts left
+  if(wrapperWidth <= 360) return -10;
+  if(wrapperWidth <= 420) return -14;
+  if(wrapperWidth <= 640) return -18;
+  return -22; // desktop small shift
+}
+
+/* ----------------------- FLOATING WRAPPER (FINAL TEXT) ----------------------- */
 let __finalFloatingWrapper = null;
 let __finalFloatingResizeHandler = null;
 let __pluginUsername = "";
 
-// remove wrapper and listeners
+/* remove wrapper and listeners */
 function removeFloatingWrapper() {
   if (__finalFloatingWrapper) {
     __finalFloatingWrapper.remove();
@@ -315,7 +328,7 @@ function removeFloatingWrapper() {
   }
 }
 
-/* adjust container inside wrapper (with wrap fallback for small screens) */
+/* adjust container inside wrapper (applies translateX left offset) */
 function adjustFinalContainer(container) {
   if (!container || !__finalFloatingWrapper) return;
 
@@ -334,28 +347,14 @@ function adjustFinalContainer(container) {
   const allowedBottom = (boxRect.top - stageRect.top) - marginAboveBox;
   const availableHeight = Math.max(allowedBottom - 8, 24);
 
-  // If very narrow (mobile), allow wrapping so letters can stack
-  const smallScreenThreshold = 460;
-  if (wrapperWidth <= smallScreenThreshold) {
-    // allow wrap temporarily to measure better fit
-    container.style.whiteSpace = 'normal';
-    container.style.textAlign = 'center';
-    // remeasure after changing whiteSpace
-    contRect = container.getBoundingClientRect();
-  } else {
-    container.style.whiteSpace = 'nowrap';
-  }
-
   // compute scaleX / scaleY
   const scaleX = maxAllowedWidth / contRect.width;
   const scaleY = availableHeight / contRect.height;
   let scale = Math.min(scaleX, scaleY, 1);
 
-  // dynamic min scale smaller on narrow phones
   const MIN_SCALE = wrapperWidth <= 420 ? 0.45 : 0.58;
   scale = Math.max(scale, MIN_SCALE);
 
-  // if we allowed wrap earlier but still too tall, keep the wrap but let scale reduce
   const scaledHeight = contRect.height * scale;
   const centeredTop = (wrapperHeight / 2) - (scaledHeight / 2);
   const scaledBottomIfCentered = centeredTop + scaledHeight;
@@ -366,21 +365,25 @@ function adjustFinalContainer(container) {
   }
 
   // compute translate relative to center baseline
-  // baseline center (without scaling) for translate calculation:
   const baselineCenterOffset = (wrapperHeight / 2) - (contRect.height / 2);
-  const translateFromCenter = finalTop - baselineCenterOffset;
+  const translateFromCenterY = finalTop - baselineCenterOffset;
+
+  // compute X offset (left shift)
+  const offsetX = getFinalOffsetX(wrapperWidth);
 
   container.style.transition = 'transform 260ms cubic-bezier(.2,.9,.3,1)';
   container.style.transformOrigin = 'center center';
-  container.style.transform = `translateY(${translateFromCenter}px) scale(${scale})`;
+  // translate(X, Y) where X is small negative to shift left
+  container.style.transform = `translate(${offsetX}px, ${translateFromCenterY}px) scale(${scale})`;
 }
 
-/* showFinalText (robust, mobile-aware) */
+/* ----------------------- showFinalText (kelime-altalta, emoji-yan-yan grup) ----------------------- */
 function showFinalText(text) {
-  // pick final text with plugin username
+  // decide final text (username plugin)
   if(!text || text === DEFAULT_LETTER_TEXT) {
     if(__pluginUsername && __pluginUsername.trim() !== "") {
-      text = `Canım Arkadaşım ${__pluginUsername} 😊 🥰`;
+      // ensure emojis are adjacent without splitting tokens: put emojis with no extra spaces between them in template
+      text = `Canım Arkadaşım ${__pluginUsername} 😊🥰`;
     } else {
       text = DEFAULT_LETTER_TEXT;
     }
@@ -392,12 +395,12 @@ function showFinalText(text) {
   const stage = document.getElementById('playArea');
   let stageRect = stage.getBoundingClientRect();
 
-  // create fixed-position wrapper (fixed is better for mobile viewport/scroll)
+  // create fixed wrapper
   __finalFloatingWrapper = document.createElement('div');
   __finalFloatingWrapper.className = 'final-floating-wrapper';
   Object.assign(__finalFloatingWrapper.style, {
     position: 'fixed',
-    left: `${Math.round(stageRect.left)}px`,   // getBoundingClientRect is viewport-based -> good for fixed
+    left: `${Math.round(stageRect.left)}px`,
     top: `${Math.round(stageRect.top)}px`,
     width: `${Math.round(stageRect.width)}px`,
     height: `${Math.round(stageRect.height)}px`,
@@ -410,50 +413,134 @@ function showFinalText(text) {
   });
   document.body.appendChild(__finalFloatingWrapper);
 
-  // inner container
+  // container: column layout so each "word line" stacks vertically
   const container = document.createElement('div');
   container.className = 'final-container';
-  container.style.whiteSpace = 'nowrap';
+  container.style.display = 'flex';
+  container.style.flexDirection = 'column';
+  container.style.gap = '8px';
+  container.style.alignItems = 'flex-start'; // left aligned so offset is visible
+  container.style.justifyContent = 'center';
+  container.style.whiteSpace = 'normal';
   container.style.willChange = 'transform';
-  container.style.transform = `translateY(${getBaseTranslateY()}px) scale(1)`;
+  // initial transform uses only base translateY; final X offset applied in adjustFinalContainer
+  container.style.transform = `translate(0px, ${getBaseTranslateY()}px) scale(1)`;
   __finalFloatingWrapper.appendChild(container);
 
-  // add chars
-  const chars = Array.from(text);
-  chars.forEach((ch, i) => {
-    const span = document.createElement('span');
-    span.className = 'letter';
-    if(isEmoji(ch)) span.classList.add('emoji');
-    span.textContent = ch;
-    container.appendChild(span);
+  // Tokenize preserving emoji sequences:
+  // Split into tokens by spaces, but group consecutive single-character emoji tokens together
+  const rawTokens = text.split(/\s+/).filter(Boolean);
 
-    setTimeout(() => {
-      span.classList.add('show');
-      setTimeout(()=> span.classList.add('spark'), 80);
-      setTimeout(()=> span.classList.add('float'), 420);
+  // Build groups: each group is {type: 'emoji'|'word', value: string}
+  const groups = [];
+  let emojiGroup = [];
 
-      // letter burst center relative to wrapper
-      const spanRect = span.getBoundingClientRect();
-      const wrapperRect = __finalFloatingWrapper.getBoundingClientRect();
-      const cx = (spanRect.left - wrapperRect.left) + spanRect.width / 2;
-      const cy = (spanRect.top - wrapperRect.top) + spanRect.height / 2;
-      createLetterBurst(cx, cy);
-    }, i * LETTER_DELAY);
+  rawTokens.forEach(tok => {
+    const chars = Array.from(tok);
+    const allEmoji = chars.length > 0 && chars.every(ch => isEmoji(ch));
+    if(allEmoji){
+      // push each emoji char into emojiGroup (we want them adjacent)
+      emojiGroup.push(...chars);
+    } else {
+      // flush emojiGroup first if any
+      if(emojiGroup.length){
+        groups.push({type:'emoji', value: emojiGroup.join('')}); // join so they are a single token
+        emojiGroup = [];
+      }
+      // word token (keep as-is)
+      groups.push({type:'word', value: tok});
+    }
+  });
+  // flush at end
+  if(emojiGroup.length){
+    groups.push({type:'emoji', value: emojiGroup.join('')});
+    emojiGroup = [];
+  }
+
+  // Animate characters with global char index
+  let charIndex = 0;
+
+  groups.forEach(group => {
+    if(group.type === 'emoji'){
+      // create a single emoji-row; emojis inside will be side-by-side
+      const emojiRow = document.createElement('div');
+      emojiRow.className = 'emoji-row';
+      emojiRow.style.display = 'flex';
+      emojiRow.style.gap = '6px'; // smaller gap so emojis are closer
+      emojiRow.style.justifyContent = 'flex-start';
+      emojiRow.style.alignItems = 'center';
+      emojiRow.style.flexWrap = 'nowrap';
+
+      const emojis = Array.from(group.value);
+      emojis.forEach((ch) => {
+        const span = document.createElement('span');
+        span.className = 'letter emoji';
+        span.textContent = ch;
+        span.style.display = 'inline-block';
+        emojiRow.appendChild(span);
+
+        setTimeout(() => {
+          span.classList.add('show');
+          setTimeout(()=> span.classList.add('spark'), 80);
+          setTimeout(()=> span.classList.add('float'), 420);
+          // burst center
+          const spanRect = span.getBoundingClientRect();
+          const wrapperRect = __finalFloatingWrapper.getBoundingClientRect();
+          const cx = (spanRect.left - wrapperRect.left) + spanRect.width / 2;
+          const cy = (spanRect.top - wrapperRect.top) + spanRect.height / 2;
+          createLetterBurst(cx, cy);
+        }, charIndex * LETTER_DELAY);
+        charIndex++;
+      });
+
+      container.appendChild(emojiRow);
+    } else {
+      // word row: each character its own span
+      const wordRow = document.createElement('div');
+      wordRow.className = 'word-row';
+      wordRow.style.display = 'inline-flex';
+      wordRow.style.gap = '6px';
+      wordRow.style.justifyContent = 'flex-start';
+      wordRow.style.alignItems = 'center';
+      wordRow.style.flexWrap = 'nowrap';
+
+      const chars = Array.from(group.value);
+      chars.forEach(ch => {
+        const span = document.createElement('span');
+        span.className = 'letter';
+        span.textContent = ch;
+        span.style.display = 'inline-block';
+        wordRow.appendChild(span);
+
+        setTimeout(() => {
+          span.classList.add('show');
+          setTimeout(()=> span.classList.add('spark'), 80);
+          setTimeout(()=> span.classList.add('float'), 420);
+          // burst center
+          const spanRect = span.getBoundingClientRect();
+          const wrapperRect = __finalFloatingWrapper.getBoundingClientRect();
+          const cx = (spanRect.left - wrapperRect.left) + spanRect.width / 2;
+          const cy = (spanRect.top - wrapperRect.top) + spanRect.height / 2;
+          createLetterBurst(cx, cy);
+        }, charIndex * LETTER_DELAY);
+        charIndex++;
+      });
+
+      container.appendChild(wordRow);
+    }
   });
 
-  const totalDelay = Math.max((chars.length * LETTER_DELAY) + 180, 260);
+  // After animation scheduling, adjust container for fit and left offset
+  const totalDelay = Math.max((charIndex * LETTER_DELAY) + 180, 260);
   setTimeout(() => {
-    // first adjust
     adjustFinalContainer(container);
-    // small further adjustment to catch fonts/paint
-    setTimeout(()=> adjustFinalContainer(container), 90);
+    setTimeout(()=> adjustFinalContainer(container), 90); // small follow-up
   }, totalDelay);
 
-  // reposition wrapper on resize/scroll and also listen to visualViewport (mobile)
+  // reposition wrapper on resize/scroll and listen to visualViewport
   __finalFloatingResizeHandler = () => {
     if (!__finalFloatingWrapper) return;
-    stageRect = stage.getBoundingClientRect();
-    // For fixed position, use viewport-based stageRect values (no scrollX/Y)
+    stageRect = document.getElementById('playArea').getBoundingClientRect();
     Object.assign(__finalFloatingWrapper.style, {
       left: `${Math.round(stageRect.left)}px`,
       top: `${Math.round(stageRect.top)}px`,
@@ -505,7 +592,7 @@ async function startSequence(){
   await createExplosion(cx, cy);
 
   setTimeout(()=> {
-    showFinalText();
+    showFinalText(); // username plugin will be applied inside if set
   }, 120);
 
   box.animate([
